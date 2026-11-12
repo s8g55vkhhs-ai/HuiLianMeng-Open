@@ -1,0 +1,1 @@
+Trigger a fresh public macOS build after the initial workflow run was cancelled.
