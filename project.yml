@@ -1,0 +1,46 @@
+name: HuiLianMeng
+options:
+  bundleIdPrefix: com.huilianmeng
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+targets:
+  HuiLianMeng:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: HuiLianMeng
+        excludes:
+          - Info.plist
+      - path: Web
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.huilianmeng.app
+        PRODUCT_NAME: HuiLianMeng
+        INFOPLIST_FILE: HuiLianMeng/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: "NO"
+schemes:
+  HuiLianMeng:
+    build:
+      targets:
+        HuiLianMeng: all
+    run:
+      config: Debug
+    archive:
+      config: Release

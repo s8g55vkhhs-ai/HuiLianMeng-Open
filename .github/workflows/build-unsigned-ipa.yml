@@ -1,0 +1,112 @@
+name: Build unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create builds status branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan builds
+          git rm -rf .
+          printf 'status=building\ncommit=%s\ntime=%s\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > BUILD_STATUS.txt
+          git add BUILD_STATUS.txt
+          git commit -m "Build started for ${GITHUB_SHA::7}"
+          git push --force origin builds
+
+  build:
+    needs: prepare
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build arm64 app without signing
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild -version | tee build.log
+          xcodebuild \
+            -project HuiLianMeng.xcodeproj \
+            -scheme HuiLianMeng \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" 2>&1 | tee -a build.log
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH=$(find "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos" -maxdepth 1 -name 'HuiLianMeng.app' -print -quit)
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/HuiLianMeng.app
+          rm -rf Payload/HuiLianMeng.app/_CodeSignature
+          zip -qry HuiLianMeng-unsigned.ipa Payload
+          shasum -a 256 HuiLianMeng-unsigned.ipa | tee HuiLianMeng-unsigned.ipa.sha256
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: HuiLianMeng-unsigned-ipa
+          path: |
+            HuiLianMeng-unsigned.ipa
+            HuiLianMeng-unsigned.ipa.sha256
+          if-no-files-found: error
+
+      - name: Publish IPA to builds branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin builds
+          git checkout -B builds origin/builds
+          printf 'status=success\ncommit=%s\ntime=%s\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > BUILD_STATUS.txt
+          git add -f BUILD_STATUS.txt build.log HuiLianMeng-unsigned.ipa HuiLianMeng-unsigned.ipa.sha256
+          git commit -m "Build unsigned IPA for ${GITHUB_SHA::7}"
+          git push --force origin builds
+
+      - name: Publish failed build log
+        if: failure()
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin builds
+          git checkout -B builds origin/builds
+          printf 'status=failed\ncommit=%s\ntime=%s\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > BUILD_STATUS.txt
+          git add -f BUILD_STATUS.txt
+          if [ -f build.log ]; then git add -f build.log; fi
+          git commit -m "Build failed for ${GITHUB_SHA::7}" || true
+          git push --force origin builds
